@@ -1,5 +1,7 @@
+# database_module.py
 import sqlite3
 import datetime # Потребуется для добавления комментария с текущей датой
+import base64 # Для кодирования/декодирования изображения
 
 class DatabaseManager:
     def __init__(self, db_name='vet_clinic.db'):
@@ -10,6 +12,21 @@ class DatabaseManager:
         # Включаем поддержку внешних ключей ПЕРЕД созданием таблиц или другими операциями
         self.cursor.execute("PRAGMA foreign_keys = ON;") # <-- Убедитесь, что это здесь
         self.create_tables()
+        self._check_and_add_image_column() # Проверка и добавление колонки для изображения
+
+    def _check_and_add_image_column(self):
+        """Проверяет наличие колонки image_base64 в таблице animals и добавляет ее, если нет."""
+        try:
+            self.cursor.execute("PRAGMA table_info(animals)")
+            columns = [info[1] for info in self.cursor.fetchall()]
+            if 'image_base64' not in columns:
+                print("Adding 'image_base64' column to 'animals' table...")
+                self.cursor.execute('ALTER TABLE animals ADD COLUMN image_base64 TEXT')
+                self.conn.commit()
+                print("'image_base64' column added.")
+        except sqlite3.Error as e:
+            print(f"Ошибка при проверке/добавлении колонки image_base64: {e}")
+            # Не прерываем работу, возможно таблица еще не создана (хотя create_tables вызывается раньше)
 
     def create_tables(self):
         # Создание таблиц базы данных
@@ -24,6 +41,7 @@ class DatabaseManager:
             )
         ''')
 
+        # Обновлено: Добавлена колонка image_base64
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS animals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,10 +50,10 @@ class DatabaseManager:
                 type TEXT,
                 breed TEXT,
                 age INTEGER,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE -- <<< ИЗМЕНЕНИЕ ЗДЕСЬ
+                image_base64 TEXT, -- <<< НОВАЯ КОЛОНКА
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
-        # Добавлено ON DELETE CASCADE для автоматического удаления животных при удалении пользователя
 
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS comments (
@@ -43,15 +61,13 @@ class DatabaseManager:
                 animal_id INTEGER,
                 comment TEXT NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(animal_id) REFERENCES animals(id) ON DELETE CASCADE -- <<< ИЗМЕНЕНИЕ ЗДЕСЬ
+                FOREIGN KEY(animal_id) REFERENCES animals(id) ON DELETE CASCADE
             )
         ''')
-        # Добавлено ON DELETE CASCADE для автоматического удаления комментариев при удалении животного
 
         self.conn.commit()
 
-    # ... (остальные методы остаются без изменений для этой ошибки) ...
-
+    # ... (user methods remain the same) ...
     def add_user(self, name, phone, email):
         try:
             self.cursor.execute(
@@ -70,22 +86,36 @@ class DatabaseManager:
         return self.cursor.fetchall()
 
     def delete_user(self, user_id):
-        # Теперь, благодаря ON DELETE CASCADE, достаточно просто удалить пользователя.
-        # SQLite автоматически удалит связанных животных, а затем и комментарии к этим животным.
         try:
             self.cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
             self.conn.commit()
         except sqlite3.Error as e:
             print(f"Ошибка удаления пользователя: {e}") # Ошибка все еще может возникнуть по другим причинам
             self.conn.rollback()
-            # Важно перебросить исключение, чтобы GUI мог его обработать
             raise # Передаем исключение выше (в VetClinicApp)
 
-    def add_animal(self, user_id, name, type_animal, breed, age):
+    def update_user(self, user_id, name, phone, email):
+        """Обновляет данные пользователя в базе данных"""
         try:
             self.cursor.execute(
-                'INSERT INTO animals (user_id, name, type, breed, age) VALUES (?, ?, ?, ?, ?)',
-                (user_id, name, type_animal, breed, age)
+                'UPDATE users SET name=?, phone=?, email=? WHERE id=?',
+                (name, phone, email, user_id)
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Ошибка обновления пользователя: {e}")
+            self.conn.rollback()
+            raise # Передать исключение дальше
+
+    # --- Animal Methods Updated ---
+
+    # Обновлено: Добавлен параметр image_base64
+    def add_animal(self, user_id, name, type_animal, breed, age, image_base64=None):
+        """Добавляет новое животное, включая изображение."""
+        try:
+            self.cursor.execute(
+                'INSERT INTO animals (user_id, name, type, breed, age, image_base64) VALUES (?, ?, ?, ?, ?, ?)',
+                (user_id, name, type_animal, breed, age, image_base64)
             )
             self.conn.commit()
             return self.cursor.lastrowid
@@ -94,16 +124,32 @@ class DatabaseManager:
             self.conn.rollback()
             raise
 
+    # Обновлено: Выбирается колонка image_base64
     def get_animals_by_user(self, user_id):
-        self.cursor.execute('SELECT id, user_id, name, type, breed, age FROM animals WHERE user_id = ? ORDER BY name', (user_id,))
+        """Получает список животных для пользователя, включая данные изображения."""
+        self.cursor.execute(
+            'SELECT id, user_id, name, type, breed, age, image_base64 FROM animals WHERE user_id = ? ORDER BY name',
+            (user_id,)
+        )
         return self.cursor.fetchall()
 
-    # --- НОВЫЙ МЕТОД (был в вашем коде, оставляем) ---
+    # Обновлено: Добавлен параметр image_base64
+    def update_animal(self, animal_id, name, type_animal, breed, age, image_base64=None):
+        """Обновляет данные животного, включая изображение."""
+        try:
+            self.cursor.execute(
+                'UPDATE animals SET name=?, type=?, breed=?, age=?, image_base64=? WHERE id=?',
+                (name, type_animal, breed, age, image_base64, animal_id)
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Ошибка обновления животного: {e}")
+            self.conn.rollback()
+            raise
+
     def delete_animal(self, animal_id):
         """Удаляет животное и связанные с ним комментарии (через ON DELETE CASCADE)."""
         try:
-            # Благодаря ON DELETE CASCADE в таблице comments, удаление животного
-            # автоматически удалит связанные с ним комментарии.
             self.cursor.execute('DELETE FROM animals WHERE id = ?', (animal_id,))
             self.conn.commit()
         except sqlite3.Error as e:
@@ -111,9 +157,9 @@ class DatabaseManager:
             self.conn.rollback()
             raise
 
+    # --- Comment Methods (remain the same) ---
     def add_comment(self, animal_id, comment_text):
         try:
-            # Дата будет добавлена автоматически базой данных (DEFAULT CURRENT_TIMESTAMP)
             self.cursor.execute(
                 'INSERT INTO comments (animal_id, comment) VALUES (?, ?)',
                 (animal_id, comment_text)
@@ -126,7 +172,6 @@ class DatabaseManager:
             raise
 
     def get_comments_by_animal(self, animal_id):
-        # Выбираем все поля, включая id и date
         self.cursor.execute('SELECT id, animal_id, comment, date FROM comments WHERE animal_id = ? ORDER BY date DESC', (animal_id,))
         return self.cursor.fetchall()
 
@@ -140,37 +185,8 @@ class DatabaseManager:
             self.conn.rollback()
             raise
 
-    def update_user(self, user_id, name, phone, email):
-        """Обновляет данные пользователя в базе данных"""
-        try:
-            self.cursor.execute(
-                'UPDATE users SET name=?, phone=?, email=? WHERE id=?',
-                (name, phone, email, user_id)
-            )
-            self.conn.commit()
-        except sqlite3.Error as e:
-            print(f"Ошибка обновления пользователя: {e}")
-            self.conn.rollback()
-            raise # Передать исключение дальше для обработки в GUI
-
-    def update_animal(self, animal_id, name, type_animal, breed, age):
-        """Обновляет данные животного в базе данных"""
-        try:
-            self.cursor.execute(
-                'UPDATE animals SET name=?, type=?, breed=?, age=? WHERE id=?',
-                (name, type_animal, breed, age, animal_id)
-            )
-            self.conn.commit()
-        except sqlite3.Error as e:
-            print(f"Ошибка обновления животного: {e}")
-            self.conn.rollback()
-            raise
-
     def update_comment(self, comment_id, new_text):
         """Обновляет текст комментария в базе данных"""
-        # Можно также добавить обновление даты при редактировании, если нужно
-        # date_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        # 'UPDATE comments SET comment=?, date=? WHERE id=?', (new_text, date_now, comment_id)
         try:
             self.cursor.execute(
                 'UPDATE comments SET comment=? WHERE id=?',

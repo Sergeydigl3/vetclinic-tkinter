@@ -7,12 +7,13 @@ class DatabaseManager:
         # Важно: Установить row_factory для удобного доступа к данным по именам колонок
         # self.conn.row_factory = sqlite3.Row # Раскомментируйте, если хотите использовать доступ как к словарю
         self.cursor = self.conn.cursor()
+        # Включаем поддержку внешних ключей ПЕРЕД созданием таблиц или другими операциями
+        self.cursor.execute("PRAGMA foreign_keys = ON;") # <-- Убедитесь, что это здесь
         self.create_tables()
 
     def create_tables(self):
         # Создание таблиц базы данных
-        # Включаем поддержку внешних ключей (важно для каскадного удаления)
-        self.cursor.execute("PRAGMA foreign_keys = ON;")
+        # PRAGMA foreign_keys = ON; уже выполнен в __init__
 
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -31,7 +32,7 @@ class DatabaseManager:
                 type TEXT,
                 breed TEXT,
                 age INTEGER,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE -- <<< ИЗМЕНЕНИЕ ЗДЕСЬ
             )
         ''')
         # Добавлено ON DELETE CASCADE для автоматического удаления животных при удалении пользователя
@@ -42,12 +43,14 @@ class DatabaseManager:
                 animal_id INTEGER,
                 comment TEXT NOT NULL,
                 date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(animal_id) REFERENCES animals(id) ON DELETE CASCADE
+                FOREIGN KEY(animal_id) REFERENCES animals(id) ON DELETE CASCADE -- <<< ИЗМЕНЕНИЕ ЗДЕСЬ
             )
         ''')
         # Добавлено ON DELETE CASCADE для автоматического удаления комментариев при удалении животного
 
         self.conn.commit()
+
+    # ... (остальные методы остаются без изменений для этой ошибки) ...
 
     def add_user(self, name, phone, email):
         try:
@@ -67,17 +70,16 @@ class DatabaseManager:
         return self.cursor.fetchall()
 
     def delete_user(self, user_id):
-        # Каскадное удаление включено в схеме (ON DELETE CASCADE),
-        # поэтому достаточно удалить пользователя.
-        # Если бы каскадного удаления не было, нужно было бы сначала удалять
-        # комментарии, потом животных, потом пользователя.
+        # Теперь, благодаря ON DELETE CASCADE, достаточно просто удалить пользователя.
+        # SQLite автоматически удалит связанных животных, а затем и комментарии к этим животным.
         try:
             self.cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
             self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Ошибка удаления пользователя: {e}")
+            print(f"Ошибка удаления пользователя: {e}") # Ошибка все еще может возникнуть по другим причинам
             self.conn.rollback()
-            raise
+            # Важно перебросить исключение, чтобы GUI мог его обработать
+            raise # Передаем исключение выше (в VetClinicApp)
 
     def add_animal(self, user_id, name, type_animal, breed, age):
         try:
@@ -96,10 +98,12 @@ class DatabaseManager:
         self.cursor.execute('SELECT id, user_id, name, type, breed, age FROM animals WHERE user_id = ? ORDER BY name', (user_id,))
         return self.cursor.fetchall()
 
-    # --- НОВЫЙ МЕТОД ---
+    # --- НОВЫЙ МЕТОД (был в вашем коде, оставляем) ---
     def delete_animal(self, animal_id):
         """Удаляет животное и связанные с ним комментарии (через ON DELETE CASCADE)."""
         try:
+            # Благодаря ON DELETE CASCADE в таблице comments, удаление животного
+            # автоматически удалит связанные с ним комментарии.
             self.cursor.execute('DELETE FROM animals WHERE id = ?', (animal_id,))
             self.conn.commit()
         except sqlite3.Error as e:
@@ -126,7 +130,6 @@ class DatabaseManager:
         self.cursor.execute('SELECT id, animal_id, comment, date FROM comments WHERE animal_id = ? ORDER BY date DESC', (animal_id,))
         return self.cursor.fetchall()
 
-    # --- НОВЫЙ МЕТОД ---
     def delete_comment(self, comment_id):
         """Удаляет комментарий по его ID."""
         try:
@@ -136,8 +139,6 @@ class DatabaseManager:
             print(f"Ошибка удаления комментария: {e}")
             self.conn.rollback()
             raise
-
-    # --- РЕАЛИЗАЦИЯ МЕТОДОВ ОБНОВЛЕНИЯ ---
 
     def update_user(self, user_id, name, phone, email):
         """Обновляет данные пользователя в базе данных"""
@@ -184,4 +185,4 @@ class DatabaseManager:
     def close(self):
         if self.conn:
             self.conn.close()
-            print("Database connection closed.")
+            print("Database connection closed.") # Сообщение для отладки

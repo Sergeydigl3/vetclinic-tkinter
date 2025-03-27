@@ -239,9 +239,7 @@ class VetClinicApp:
         self.root.geometry('1400x800')
         self.root.configure(bg='#f0f0f0')
 
-        # Изображение-заглушка, если у питомца нет фото
         self.placeholder_image = self._create_placeholder_image(200, 200, text="Нет фото")
-        # Ссылка на текущее отображаемое фото питомца (для GC)
         self.current_animal_photo = None
 
         try:
@@ -268,12 +266,6 @@ class VetClinicApp:
         """Создает простое серое изображение-заполнитель"""
         try:
             img = Image.new('RGB', (width, height), color = (200, 200, 200))
-            # Можно добавить текст, но это усложнит код из-за необходимости работы со шрифтами
-            # from PIL import ImageDraw, ImageFont
-            # d = ImageDraw.Draw(img)
-            # try: font = ImageFont.truetype("arial.ttf", 15)
-            # except IOError: font = ImageFont.load_default()
-            # d.text((10,10), text, fill=(0,0,0), font=font)
             return ImageTk.PhotoImage(img)
         except Exception as e:
             print(f"Не удалось создать placeholder: {e}")
@@ -443,7 +435,6 @@ class VetClinicApp:
         list_string = self.users_listbox.get(index)
         try:
             user_id = int(list_string.split('.')[0])
-            # Find the user data from the cached list
             user_data = next((u for u in self.all_users_data if u[0] == user_id), None)
             return user_id, user_data
         except (ValueError, IndexError, AttributeError):
@@ -520,9 +511,7 @@ class VetClinicApp:
                 try:
                     img_data = base64.b64decode(image_b64)
                     img = Image.open(io.BytesIO(img_data))
-                    # Resize for display in the UI, keeping aspect ratio
                     img.thumbnail((200, 200))
-                    # Keep a reference to avoid garbage collection
                     self.current_animal_photo = ImageTk.PhotoImage(img)
                     self.animal_image_label.config(image=self.current_animal_photo)
                 except Exception as e:
@@ -833,5 +822,4 @@ def main():
         root.mainloop()
 
 if __name__ == '__main__':
-    # Убедитесь, что Pillow установлен: pip install Pillow
     main()

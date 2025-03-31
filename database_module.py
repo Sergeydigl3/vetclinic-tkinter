@@ -6,13 +6,10 @@ import base64 # Для кодирования/декодирования изо�
 class DatabaseManager:
     def __init__(self, db_name='vet_clinic.db'):
         self.conn = sqlite3.connect(db_name)
-        # Важно: Установить row_factory для удобного доступа к данным по именам колонок
-        # self.conn.row_factory = sqlite3.Row # Раскомментируйте, если хотите использовать доступ как к словарю
         self.cursor = self.conn.cursor()
-        # Включаем поддержку внешних ключей ПЕРЕД созданием таблиц или другими операциями
-        self.cursor.execute("PRAGMA foreign_keys = ON;") # <-- Убедитесь, что это здесь
+        self.cursor.execute("PRAGMA foreign_keys = ON;")
         self.create_tables()
-        self._check_and_add_image_column() # Проверка и добавление колонки для изображения
+        self._check_and_add_image_column()
 
     def _check_and_add_image_column(self):
         """Проверяет наличие колонки image_base64 в таблице animals и добавляет ее, если нет."""
@@ -26,12 +23,8 @@ class DatabaseManager:
                 print("'image_base64' column added.")
         except sqlite3.Error as e:
             print(f"Ошибка при проверке/добавлении колонки image_base64: {e}")
-            # Не прерываем работу, возможно таблица еще не создана (хотя create_tables вызывается раньше)
 
     def create_tables(self):
-        # Создание таблиц базы данных
-        # PRAGMA foreign_keys = ON; уже выполнен в __init__
-
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +34,6 @@ class DatabaseManager:
             )
         ''')
 
-        # Обновлено: Добавлена колонка image_base64
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS animals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +59,6 @@ class DatabaseManager:
 
         self.conn.commit()
 
-    # ... (user methods remain the same) ...
     def add_user(self, name, phone, email):
         try:
             self.cursor.execute(
@@ -78,8 +69,8 @@ class DatabaseManager:
             return self.cursor.lastrowid
         except sqlite3.Error as e:
             print(f"Ошибка добавления пользователя: {e}")
-            self.conn.rollback() # Откатить транзакцию при ошибке
-            raise # Передать исключение дальше
+            self.conn.rollback()
+            raise
 
     def get_users(self):
         self.cursor.execute('SELECT id, name, phone, email FROM users ORDER BY name') # Добавил сортировку
@@ -90,9 +81,9 @@ class DatabaseManager:
             self.cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
             self.conn.commit()
         except sqlite3.Error as e:
-            print(f"Ошибка удаления пользователя: {e}") # Ошибка все еще может возникнуть по другим причинам
+            print(f"Ошибка удаления пользователя: {e}")
             self.conn.rollback()
-            raise # Передаем исключение выше (в VetClinicApp)
+            raise
 
     def update_user(self, user_id, name, phone, email):
         """Обновляет данные пользователя в базе данных"""
@@ -124,7 +115,6 @@ class DatabaseManager:
             self.conn.rollback()
             raise
 
-    # Обновлено: Выбирается колонка image_base64
     def get_animals_by_user(self, user_id):
         """Получает список животных для пользователя, включая данные изображения."""
         self.cursor.execute(
@@ -133,7 +123,6 @@ class DatabaseManager:
         )
         return self.cursor.fetchall()
 
-    # Обновлено: Добавлен параметр image_base64
     def update_animal(self, animal_id, name, type_animal, breed, age, image_base64=None):
         """Обновляет данные животного, включая изображение."""
         try:
@@ -157,7 +146,6 @@ class DatabaseManager:
             self.conn.rollback()
             raise
 
-    # --- Comment Methods (remain the same) ---
     def add_comment(self, animal_id, comment_text):
         try:
             self.cursor.execute(
@@ -165,7 +153,7 @@ class DatabaseManager:
                 (animal_id, comment_text)
             )
             self.conn.commit()
-            return self.cursor.lastrowid # Возвращаем ID добавленного комментария
+            return self.cursor.lastrowid
         except sqlite3.Error as e:
             print(f"Ошибка добавления комментария: {e}")
             self.conn.rollback()
@@ -201,4 +189,4 @@ class DatabaseManager:
     def close(self):
         if self.conn:
             self.conn.close()
-            print("Database connection closed.") # Сообщение для отладки
+            print("Database connection closed.")
